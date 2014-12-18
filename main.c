@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <time.h>
 #include <math.h>
+#include <mpi.h>
 #include "config.h"
 
 /* MPI vars */
@@ -28,6 +29,35 @@ double t(int i){
 }
 double x(int i){
     return i*h+x0;
+}
+
+double init_fun(double x,double t)
+{
+    return sin(x)*cos(t);
+}
+double border_fun(double t)
+{
+    return 0;
+}
+double der_border_fun(double t)
+{
+    return 0;
+}
+double heter_fun(double x,double t,double u,double ut_j)
+{
+    return cos(x)*cos(t)-ut_j;
+}
+void init_config()
+{
+    config.N = 5;
+	config.M = 5; //points count
+    config.x0 = 0;
+    config.xN = M_PI;
+    config.t0 = 0;
+    config.tM = M_PI;
+    config.tau = M_PI/2;
+    config.a = 1;
+    config.s = 0.8;
 }
 
 void configure(int argc, char* argv[]){
@@ -79,20 +109,24 @@ void configure_mpi(int argc, char* argv[]){
     MPI_Comm_size( MPI_COMM_WORLD, &mpi.process_count);
     N=N_on_process(mpi.rank);
 
-    x0=x(start_from_on_process(rank));
+    x0=x(start_from_on_process(mpi.rank));
     xN=x0+(N-1)*h;
 }
 
 /* начинаем прием данных, пишем в prev */
 void start_recieving(){
     if(!mpi.rank) return;
-    MPI_Irecv(prev, 2, MPI_DOUBLE, mpi.rank-1, MPI_ANY, MPI_COMM_WORLD, mpi.req);	//0ую получаем
+    MPI_Irecv(prev, 2, MPI_DOUBLE, mpi.rank-1, MPI_ANY_TAG, MPI_COMM_WORLD, mpi.req);	//0ую получаем
 }
 
 void start_sending(double * what){
     if(mpi.rank<mpi.process_count-1){
-        MPI_Isend(what, 2, MPI_DOUBLE, mpi.rank+1, MPI_ANY, MPI_COMM_WORLD, mpi.req+1);	//предпоследнюю посылаем
+        MPI_Isend(what, 2, MPI_DOUBLE, mpi.rank+1, MPI_ANY_TAG, MPI_COMM_WORLD, mpi.req+1);	//предпоследнюю посылаем
     }
+}
+
+void wait_read_request_completion(){
+    MPI_Waitall(1, mpi.req, MPI_STATUSES_IGNORE);
 }
 /* ожидание завершения отправок */
 void wait_request_completion(){
@@ -104,9 +138,6 @@ void wait_request_completion(){
         MPI_Waitall(1, mpi.req+1, MPI_STATUSES_IGNORE);
     }
 }
-void wait_read_request_completion(){
-    MPI_Waitall(1, mpi.req, MPI_STATUSES_IGNORE);
-}
 
 
 
@@ -117,7 +148,8 @@ int main(int argc, char* argv[]) {
 //		return 1;
     }
     //
-
+	
+	init_config();
     configure(argc,argv);
     configure_mpi(argc,argv);
 
@@ -252,7 +284,18 @@ int main(int argc, char* argv[]) {
 	{
 		U = (double*)malloc(sizeof(double)*sizeU);
 	}
-    MPI_Gatherv(g_U,M*(N+2), MPI_DOUBLE, U, sizeU, displays, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+	int* sizes = (int*)malloc(sizeof(int)*mpi.process_count);
+	int* offsets = (int*)malloc(sizeof(int)*mpi.process_count);
+	
+	sizes[0] = N_on_process(0);
+	offsets[0] = 0;
+	for(i = 1; i < mpi.process_count; i++)
+	{
+		sizes[i] = N_on_process(i);
+		offsets[i] = offsets[i-1]+sizes[i-1];		
+	}
+
+    MPI_Gatherv(g_U, M*(N+2), MPI_DOUBLE, U, sizes, offsets, MPI_DOUBLE, 0, MPI_COMM_WORLD);
     
 	if (mpi.rank == 0)
 	{
@@ -275,9 +318,9 @@ int main(int argc, char* argv[]) {
 			}
 			offset += (width+2)*M;
 		}
+		fclose(output);
 	}
 
-    fclose(output);
     printf("OK\n");
     free(g_U);
     free(--ut_j);
