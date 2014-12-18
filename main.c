@@ -13,14 +13,14 @@ struct{
     MPI_Request req[2];
 } mpi;
 
-unsigned N,M; //points count
+int N,M; //points count
 double x0,xN,t0,tM,tau,a,s = 0.8;
 double h,d;
 double * g_U; //локальный результат
 double prev[2];    //граничные слева
 
 //N - rows, M - columns
-unsigned index(unsigned x,unsigned t)
+int index(int x,int t)
 {
     return t*(N+2) + x + 2;
 }
@@ -31,34 +31,6 @@ double x(int i){
     return i*h+x0;
 }
 
-double init_fun(double x,double t)
-{
-    return sin(x)*cos(t);
-}
-double border_fun(double t)
-{
-    return 0;
-}
-double der_border_fun(double t)
-{
-    return 0;
-}
-double heter_fun(double x,double t,double u,double ut_j)
-{
-    return cos(x)*cos(t)-ut_j;
-}
-void init_config()
-{
-    config.N = 5;
-	config.M = 5; //points count
-    config.x0 = 0;
-    config.xN = M_PI;
-    config.t0 = 0;
-    config.tM = M_PI;
-    config.tau = M_PI/2;
-    config.a = 1;
-    config.s = 0.8;
-}
 
 void configure(int argc, char* argv[]){
     /*
@@ -143,9 +115,9 @@ void wait_request_completion(){
 
 
 int main(int argc, char* argv[]) {
-    if (argc != 5) {
-//		fprintf(stderr, "Usage: %s N input_file iterations output_file\n", argv[0]);
-//		return 1;
+    if (argc != 2) {
+		fprintf(stderr, "Usage: %s output_file\n", argv[0]);
+		return 1;
     }
     //
 	
@@ -153,15 +125,17 @@ int main(int argc, char* argv[]) {
     configure(argc,argv);
     configure_mpi(argc,argv);
 
-    unsigned k = floor(tau/d);
+    int k = floor(tau/d);
     double lambda = tau/d - d;
     g_U=(double*)malloc(sizeof(double)*(N+2)*M);
-    unsigned i,j;
+    int i,j;
 
-    if(mpi.rank){
+    if(mpi.rank>0)
+	{
         //начинаем читать данные с предыдущей ноды
         start_recieving();
-    }else{
+    }else
+	{
         for(i=0; i<M; ++i)
         {
             g_U[index(0,i)] = border_fun(t(i));
@@ -169,7 +143,8 @@ int main(int argc, char* argv[]) {
     }
 
     i=0;
-    if(mpi.rank){
+    if(mpi.rank > 0)
+	{
         i=-2;
     }
 
@@ -186,7 +161,8 @@ int main(int argc, char* argv[]) {
     ++ut_j;
     ++ut_j1;
 
-    if(mpi.rank){
+    if(mpi.rank > 0)
+	{
         wait_read_request_completion();
     }
 
@@ -194,9 +170,10 @@ int main(int argc, char* argv[]) {
     {
 
         /* заполняем граничные и начинаем читать */
-        if(mpi.rank && j<M-1){
-            g_U[index(-2,j+1)]=prev[0];
-            g_U[index(-1,j+1)]=prev[1];
+        if(mpi.rank > 0 && j<M-1)
+		{
+            g_U[index(-2,j+1)] = prev[0];
+            g_U[index(-1,j+1)] = prev[1];
         }
         start_recieving();
 
@@ -274,8 +251,11 @@ int main(int argc, char* argv[]) {
                 a*(1-s)/(2*h)*(g_U[index(i-2,j)] - 4*g_U[index(i-1,j)] + 3*g_U[index(i,j)]) + F_i_j);
         }
 
-        start_sending(&g_U[index(N-2,j+1)]);
-        wait_request_completion();
+        if (j < M-2)
+		{
+			start_sending(&g_U[index(N-2,j+1)]);
+        	wait_request_completion();
+		}
     }
 	
 	double* U;
@@ -300,7 +280,7 @@ int main(int argc, char* argv[]) {
 	if (mpi.rank == 0)
 	{
 		FILE *output;
-		output = fopen("output.txt","w");
+		output = fopen(argv[1],"w");
 		
 		int k = 0, offset = 0;
 		for(k = 0; k < mpi.process_count; k++)
