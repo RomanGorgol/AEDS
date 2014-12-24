@@ -32,12 +32,6 @@ double x(int i){
 }
 
 
-
-void message(char* message)
-{
-//	fprintf(stderr,"process %d : %s\n",mpi.rank,message);
-}
-
 void configure(int argc, char* argv[]){
     /*
      * загрузка с хедера, возможна передача данных из аргументов или файла
@@ -62,7 +56,6 @@ void showMPIError(int err)
 	int len;
 
 	MPI_Error_string(err,errorText, &len);
-//	fprintf(stderr,"process = %d, %s, error = %d\n", mpi.rank, errorText, err);
 }
 
 int N_on_process(int process){
@@ -104,46 +97,32 @@ void start_recieving(){
     if(!mpi.rank) return;
 	MPI_Status st;
     MPI_Irecv(prev, 2, MPI_DOUBLE, mpi.rank-1, MPI_ANY_TAG, MPI_COMM_WORLD,mpi.req);	//0ую получаем
-
-	//message("start recieving ...\n");
 }
 
 void start_sending(double * what){
     if(mpi.rank<mpi.process_count-1){
 		MPI_Status st;
         MPI_Isend(what, 2, MPI_DOUBLE, mpi.rank+1, MPI_ANY_TAG, MPI_COMM_WORLD,mpi.req+1);	//предпоследнюю посылаем
-    //	fprintf(stderr,"start sending ...\n");
 	}
 }
 
-void wait_read_request_completion(){
-	//message("wait read request");
-	
+void wait_read_request_completion()
+{	
     MPI_Waitall(1, mpi.req, MPI_STATUSES_IGNORE);
 }
 /* ожидание завершения отправок */
 void wait_request_completion()
 {
-//	fprintf(stderr,"process %d, wait_request_completition\n",mpi.rank);
-
     if(mpi.rank > 0 && mpi.rank < mpi.process_count-1)
 	{
-//		fprintf(stderr,"process %d, before wait_all\n",mpi.rank);
-
-        int err = MPI_Waitall(2, mpi.req, MPI_STATUSES_IGNORE);
-//		showMPIError(err);
-		
+        MPI_Waitall(2, mpi.req, MPI_STATUSES_IGNORE);	
     }else if(mpi.rank==mpi.process_count-1)
 	{
         wait_read_request_completion();
     }
 	else
 	{
-		MPI_Status st;
-//		fprintf(stderr,"process %d, status %d\n",mpi.rank,st);
-        int err = MPI_Waitall(1, mpi.req+1, &st);
-	//	fprintf(stderr,"process %d, status %d\n",mpi.rank,st.MPI_Error);
-	//	showMPIError(err);
+        MPI_Waitall(1, mpi.req+1, MPI_STATUSES_IGNORE);
     }
 }
 
@@ -151,20 +130,16 @@ void wait_request_completion()
 
 
 int main(int argc, char* argv[]) {
-    message("1");
 	if (argc != 2) {
 		fprintf(stderr, "Usage: %s output_file\n", argv[0]);
 		return 1;
     }
+	double startTime = MPI_Wtime();
 
-
-//	message("2");
 	init_config();   
  	
-//	message("3"); 
 	configure(argc,argv);    
 	
-//	message("4");
     configure_mpi(argc,argv);
 
 
@@ -174,26 +149,25 @@ int main(int argc, char* argv[]) {
     g_U=(double*)malloc(sizeof(double)*(N+2)*M);
     int i,j;
 	
-//	fprintf(stderr,"process = %d, N = %d, start with = %d\n", mpi.rank, N, start_from_on_process(mpi.rank));
     if(mpi.rank > 0){
         //начинаем читать данные с предыдущей ноды
-    	message("before start recieving");
 	    start_recieving();
-
-    }else
+    }
+	else
 	{
         for(i=0; i<M; ++i)
         {
             g_U[index(0,i)] = border_fun(t(i));
         }
-		message("6");
     }
 	
 	
-    i=0;
-    if(mpi.rank > 0){
-        i=-2;
+    i = 0;
+    if(mpi.rank > 0)
+	{
+        i = -2;
     }
+
 
     for(; i<N; ++i)
     {
@@ -208,12 +182,10 @@ int main(int argc, char* argv[]) {
     ++ut_j;
     ++ut_j1;
 
-    if(mpi.rank > 0){
-//		fprintf(stderr,"process %d, time %d\n",mpi.rank, j);
+    if(mpi.rank > 0)
+	{
         wait_read_request_completion();
-    }
-	message("7");
-	
+    }	
 	
     for(j=0; j<M-1; ++j)
     {
@@ -221,22 +193,19 @@ int main(int argc, char* argv[]) {
         /* заполняем граничные и начинаем читать */
         if(mpi.rank > 0)
 		{
-            g_U[index(-2,j+1)]=prev[0];
-            g_U[index(-1,j+1)]=prev[1];
+            g_U[index(-2,j+1)] = prev[0];
+            g_U[index(-1,j+1)] = prev[1];
         }
 		
-//		fprintf(stderr,"process = %d, time: %d\n",mpi.rank,j);
-   		start_recieving();
-//		fprintf(stderr,"process = %d, recv end time %d\n",mpi.rank,j);
-		
-			
-        if(j>=k+1)
+   		start_recieving();		
+        
+		if(j >= k+1)
         {
             /* получение края слева */
             i = -1;
-            if(!mpi.rank)
+            if(mpi.rank == 0)
             {
-                i=1;
+                i = 1;
                 ut_j1[0] = border_fun( t(j+1)-tau);
                 ut_j[0]  = border_fun(t(j)-tau);
             }
@@ -248,10 +217,10 @@ int main(int argc, char* argv[]) {
         }
         else if(j == k)
             {
-                i=-1;
+                i = -1;
                 if(!mpi.rank)
                 {
-                    i=1;
+                    i = 1;
                     ut_j1[0] = border_fun(t(j+1)-tau);
                     ut_j[0]  = init_fun( x(0), t(j)-tau);
                 }
@@ -269,12 +238,11 @@ int main(int argc, char* argv[]) {
                     ut_j1[i] = init_fun(x(i), t(j+1)-tau);
                     ut_j[i] =  init_fun(x(i), t(j)-tau);
                 }
-				message("8");
-				
             }
 
         i=0;
-        if(mpi.rank == 0){
+        if(mpi.rank == 0)
+		{
             i=2;
             double f_1_j1 = heter_fun(x0, t(j+1), g_U[index(0,j+1)], ut_j1[0]);
             double dot_g_j1 = der_border_fun(t(j+1));
@@ -286,16 +254,13 @@ int main(int argc, char* argv[]) {
                         heter_fun(x(0), t(j+1), g_U[index(0,j+1)],  ut_j1[0]) +
                         heter_fun(x(1), t(j),   g_U[index(1,j)],    ut_j[1])
                     );
-			message("9");
 			
             g_U[index(1,j+1)] = d*h/(h + 2*a*s*d)* (
                         g_U[index(1,j)]/d -
                         a*s		/ (2*h)*(-4*g_U[index(0,j+1)] - 2*h/a*(f_1_j1 - dot_g_j1)) -
                         a*(1-s) / (2*h)*(-4*g_U[index(0,j)]	  - 2*h/a*(f_1_j - dot_g_j) + 4*g_U[index(1,j)]) +
                         F_2_j
-                    );
-			message("10");
-			
+                    );			
         }
         for(; i<N; i++)
         {
@@ -304,18 +269,17 @@ int main(int argc, char* argv[]) {
                         heter_fun(x(i-1), t(j+1), g_U[index(i-1,j+1)], ut_j1[i-1]) +
                         heter_fun(x(i), t(j), g_U[index(i,j)], ut_j[i])
                     );
-//			fprintf(stderr,"process %d: i = %d second\n",mpi.rank,i);
+
             g_U[index(i,j+1)] = 2*d*h/(2*h+3*a*s*d)* (g_U[index(i,j)]/d -
                 a*s/    (2*h)*(g_U[index(i-2,j+1)] - 4*g_U[index(i-1,j+1)]) -
                 a*(1-s)/(2*h)*(g_U[index(i-2,j)] - 4*g_U[index(i-1,j)] + 3*g_U[index(i,j)]) + F_i_j);
         }
-		message("11");
 		
 		start_sending(&g_U[index(N-2,j+1)]);
 		
-		if (j<M-2){
+		if (j < M-2)
+		{
 			wait_request_completion();
-//			start_recieving();	
 		}
     }
 	double* U;
@@ -337,7 +301,12 @@ int main(int argc, char* argv[]) {
 
 	
     MPI_Gatherv(g_U, M*(N+2), MPI_DOUBLE, U, sizes, offsets, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-    
+  
+	if (mpi.rank == 0)
+	{
+		printf("time: %lf\n",MPI_Wtime() - startTime);
+    }  
+
 	if (mpi.rank == 0)
 	{
 		FILE *output;
@@ -353,7 +322,6 @@ int main(int argc, char* argv[]) {
 				for(j = 0; j<M; ++j)
 				{
 					int ind = offset+j*width+i;
-		//			fprintf(output,"%d_%d_%d\t",offset,i,j);
 					fprintf(output,"%lf\t",U[ind]);
 				}
 				fprintf(output,"\n");
@@ -363,8 +331,9 @@ int main(int argc, char* argv[]) {
 		fclose(output);
 	}
 
-    printf("process %d, OK\n",mpi.rank);
-    free(g_U);
+  //  printf("process %d, OK\n",mpi.rank);
+  
+	free(g_U);
     free(--ut_j);
     free(--ut_j1);
     
