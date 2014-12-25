@@ -3,8 +3,8 @@
 #include <math.h>
 
 struct{
-    unsigned N;
-	unsigned M; //points count
+    int N;
+	int M; //points count
     double x0;
     double xN;
     double t0;
@@ -32,8 +32,9 @@ double heter_fun(double x,double t,double u,double ut_j)
 }
 void init_config()
 {
-    config.N = 20;
-	config.M = 20; //points count
+    config.N = 1000000;
+	config.M = 6000; //points count
+
     config.x0 = 0;
     config.xN = M_PI;
     config.t0 = 0;
